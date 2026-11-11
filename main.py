@@ -3,46 +3,53 @@ import requests
 import re
 
 app = FastAPI()
+session = requests.Session()
 
 GEMINI_API_KEY = "AQ.Ab8RN6JB2PByMqHn-r3MFsfPTWRvjvPBAwKlaCbJLZkKQVPw0g"
+ACTIVE_MODEL = "gemini-3.0-flash"
 
-def call_gemini(model_name: str, prompt: str):
+def call_gemini(model_name: str, prompt: str, disable_thinking: bool = True):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+    gen_config = {"maxOutputTokens": 300, "temperature": 0.3}
+    if disable_thinking:
+        gen_config["thinkingConfig"] = {"thinkingBudget": 0}
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}]
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": gen_config
     }
-    return requests.post(url, json=payload, timeout=4.5).json()
+    return session.post(url, json=payload, timeout=4.2).json()
 
 def translate_with_gemini(user_msg: str) -> str:
+    global ACTIVE_MODEL
     prompt = (
-        "너는 한국어와 필리핀 따갈로그어(Taglish 및 현지 줄임말 포함) 전문 통역 챗봇이야.\n"
-        "1. 입력된 문장이 [한국어]라면:\n"
-        "- 자연스러운 일상 따갈로그어와 현지인이 자주 쓰는 Taglish 표현 2가지를 알려줘.\n"
-        "- 바로 밑에 한글 발음을 적어줘.\n\n"
-        "2. 입력된 문장이 [따갈로그어/영어/Taglish]라면:\n"
-        "- 자연스러운 한국어로 번역해줘.\n"
-        "- 줄임말이나 핵심 단어가 있다면 간단히 뜻을 풀이해줘.\n"
-        "- 이어서 답장하기 좋은 센스 있는 따갈로그어 답변 1개(한글 발음 포함)를 추천해줘.\n\n"
-        "불필요한 인사말 없이 카톡에서 읽기 편하게 간결하게 답변해.\n\n"
+        "한국어-따갈로그어(Taglish) 통역사로서 카톡에서 읽기 편하게 4줄 이내로 핵심만 간결하게 답해줘.\n"
+        "1. [한국어] 입력 시: 자연스러운 따갈로그어/Taglish 표현 2개와 [한글 발음] 표기\n"
+        "2. [따갈로그어/영어] 입력 시: 자연스러운 한국어 뜻과 짧은 추천 답장 1개([한글 발음] 포함)\n"
         f"입력 문장: {user_msg}"
     )
     try:
-        models_to_try = ["gemini-3.8-flash", "gemini-3.0-flash", "gemini-2.5-flash", "gemini-flash-latest"]
-        last_err = ""
-        for model_name in models_to_try:
-            data = call_gemini(model_name, prompt)
+        for model_name in [ACTIVE_MODEL, "gemini-flash-latest", "gemini-2.5-flash"]:
+            data = call_gemini(model_name, prompt, disable_thinking=True)
             if "candidates" in data and len(data["candidates"]) > 0:
+                ACTIVE_MODEL = model_name
                 return data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            last_err = data.get("error", {}).get("message", str(data))
-            match = re.search(r"use models/([a-zA-Z0-9._-]+)", last_err)
+            
+            err_msg = data.get("error", {}).get("message", str(data))
+            if "thinkingConfig" in err_msg:
+                data2 = call_gemini(model_name, prompt, disable_thinking=False)
+                if "candidates" in data2 and len(data2["candidates"]) > 0:
+                    ACTIVE_MODEL = model_name
+                    return data2["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+            match = re.search(r"use models/([a-zA-Z0-9._-]+)", err_msg)
             if match:
-                rec_model = match.group(1)
-                retry_data = call_gemini(rec_model, prompt)
+                ACTIVE_MODEL = match.group(1)
+                retry_data = call_gemini(ACTIVE_MODEL, prompt, disable_thinking=True)
                 if "candidates" in retry_data and len(retry_data["candidates"]) > 0:
                     return retry_data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        return f"API 확인 필요: {last_err}"
+        return f"API 확인 필요: {err_msg}"
     except Exception as e:
-        return f"통신 지연 또는 오류: {str(e)}"
+        return f"잠시 후 다시 입력해 주세요. ({str(e)})"
 
 @app.post("/")
 @app.post("/translate")
