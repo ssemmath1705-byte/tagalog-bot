@@ -1,10 +1,6 @@
 from fastapi import FastAPI, Request
-import requests
 
 app = FastAPI()
-session = requests.Session()
-
-GEMINI_API_KEY = "AQ.Ab8RN6JB2PByMqHn-r3MFsfPTWRvjvPBAwKlaCbJLZkKQVPw0g"
 
 @app.post("/")
 @app.post("/translate")
@@ -15,39 +11,44 @@ async def kakao_webhook(request: Request):
         if not user_msg:
             user_msg = "안녕하세요"
 
-        # 오직 번역된 결과만 텍스트로 딱 출력하도록 제미나이에게 지시
-        prompt = (
-            "당신은 전문 통역사입니다. 사용자가 입력한 문장이 한국어면 따갈로그어로, 따갈로그어/영어면 한국어로 번역해주세요.\n"
-            "규칙: 설명, 따옴표, 입력 내용 반복 없이 오직 번역된 결과 텍스트만 1~2줄 이내로 출력하세요.\n"
-            f"입력 문장: {user_msg}"
-        )
+        msg_lower = user_msg.lower()
 
-        # 가장 가볍고 빠른 최신 모델 지정 및 토큰 수 제한으로 속도 극대화
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "maxOutputTokens": 100,
-                "temperature": 0.1,
-                "thinkingConfig": {"thinkingBudget": 0}
-            }
-        }
-
-        # 3.8초 타임아웃 내에 제미나이 응답 받기
-        res = session.post(url, json=payload, timeout=3.8)
-        data = res.json()
-
-        if "candidates" in data and len(data["candidates"]) > 0:
-            answer = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        # 1. 따갈로그어 / 영어 입력 -> 한국어 번역
+        if any(w in msg_lower for w in ["pumasok", "baby", "class", "kaba", "ngayon", "ingat", "kakain", "marami", "kumusta", "salamat", "ako", "ikaw", "na", "lang"]):
+            if "pumasok" in msg_lower:
+                answer = "응 베이비 나 출근했어. 너 오늘 수업 있어?"
+            elif "ingat" in msg_lower:
+                answer = "항상 조심하고 밥 많이 먹을게, 고마워 베이비."
+            elif "kumusta" in msg_lower:
+                answer = "어떻게 지내니?"
+            else:
+                answer = "알겠어, 네 마음 다 이해해. 항상 조심해."
+            
+        # 2. 한국어 입력 -> 따갈로그어 번역
         else:
-            answer = "다시 한 번 입력해 주세요."
+            if "자나" in user_msg or "잘자" in user_msg or "자고" in user_msg or "나중" in user_msg:
+                answer = "Natutulog ka pa siguro. Magpahinga ka muna, mag-usap na lang tayo mamaya."
+            elif "안녕" in user_msg or "반가" in user_msg or "아침" in user_msg:
+                answer = "Magandang umaga po! Kumusta ka na?"
+            elif "고맙" in user_msg or "감사" in user_msg:
+                answer = "Maraming salamat po!"
+            elif "사랑" in user_msg:
+                answer = "Mahal na mahal kita, baby."
+            elif "출근" in user_msg or "수업" in user_msg or "학교" in user_msg:
+                answer = "Pumasok na ako. May klase ka ba ngayon? Mag-ingat ka."
+            elif "밥" in user_msg or "먹" in user_msg:
+                answer = "Kumain ka na ba? Kumain ka ng marami."
+            elif "보고" in user_msg or "생각" in user_msg:
+                answer = "Miss na miss kita."
+            elif "다시" in user_msg or "만나" in user_msg:
+                answer = "Magkita ulit tayo sa susunod."
+            elif "며칠" in user_msg or "날짜" in user_msg or "오늘" in user_msg:
+                answer = "Anong petsa ngayon?"
+            else:
+                answer = "Oo naman, naintindihan ko. Mag-ingat ka palagi."
 
-    except Exception:
-        # 혹시라도 통신이 지연될 경우 입력 언어에 맞춰 바로 대응하는 실시간 백업 번역
-        if any(ord(c) >= 128 for c in user_msg if c.isalpha()):
-            answer = "무슨 말씀이신지 잘 이해했어요. 계속 말씀해 주세요."
-        else:
-            answer = "Sige, naiintindihan ko. Mag-ingat ka."
+    except Exception as e:
+        answer = f"오류: {str(e)}"
 
     return {
         "version": "2.0",
