@@ -22,19 +22,28 @@ async def kakao_webhook(request: Request):
             f"문장: {user_msg}"
         )
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 200, "temperature": 0.2, "thinkingConfig": {"thinkingBudget": 0}}
-        }
+        models = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash"]
+        data = None
+        
+        for model_name in models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"maxOutputTokens": 200, "temperature": 0.2, "thinkingConfig": {"thinkingBudget": 0}}
+            }
+            try:
+                res = session.post(url, json=payload, timeout=4.2)
+                temp_data = res.json()
+                if "candidates" in temp_data:
+                    data = temp_data
+                    break
+            except Exception:
+                continue
 
-        res = session.post(url, json=payload, timeout=4.5)
-        data = res.json()
-
-        if "candidates" in data and len(data["candidates"]) > 0:
+        if data and "candidates" in data and len(data["candidates"]) > 0:
             answer = data["candidates"][0]["content"]["parts"][0]["text"].strip()
         else:
-            answer = f"응답 오류: {str(data)[:100]}"
+            answer = "구글 AI 서버가 혼잡합니다. 잠시 후 다시 입력해 주세요."
 
     except Exception as e:
         answer = f"오류 발생: {str(e)}"
