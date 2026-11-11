@@ -3,7 +3,6 @@ import requests
 
 app = FastAPI()
 
-# 발급받으신 API 키가 미리 적용되어 있습니다.
 GEMINI_API_KEY = "AQ.Ab8RN6JB2PByMqHn-r3MFsfPTWRvjvPBAwKlaCbJLZkKQVPw0g"
 
 def translate_with_gemini(user_msg: str) -> str:
@@ -21,16 +20,20 @@ def translate_with_gemini(user_msg: str) -> str:
         f"입력 문장: {user_msg}"
     )
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}]
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "thinkingConfig": {"thinkingBudget": 0}
+        }
     }
     try:
-        res = requests.post(url, json=payload, timeout=10)
+        res = requests.post(url, json=payload, timeout=4.5)
         data = res.json()
         if "candidates" in data and len(data["candidates"]) > 0:
             return data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        return "번역 결과를 가져오지 못했습니다."
+        err_msg = data.get("error", {}).get("message", str(data))
+        return f"API 확인 필요: {err_msg}"
     except Exception as e:
-        return f"통신 오류: {str(e)}"
+        return f"통신 지연 또는 오류: {str(e)}"
 
 @app.post("/")
 @app.post("/translate")
@@ -48,11 +51,16 @@ async def kakao_webhook(request: Request):
         "version": "2.0",
         "template": {
             "outputs": [
-                [{"simpleText": {"text": answer}}]
+                {
+                    "simpleText": {
+                        "text": answer
+                    }
+                }
             ]
         }
     }
 
 @app.get("/")
+@app.get("/translate")
 async def root():
     return {"status": "Tagalog Translation Bot is running!"}
