@@ -1,12 +1,19 @@
 from fastapi import FastAPI, Request
 import requests
+import re
 
 app = FastAPI()
 
 GEMINI_API_KEY = "AQ.Ab8RN6JB2PByMqHn-r3MFsfPTWRvjvPBAwKlaCbJLZkKQVPw0g"
 
+def call_gemini(model_name: str, prompt: str):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}]
+    }
+    return requests.post(url, json=payload, timeout=4.5).json()
+
 def translate_with_gemini(user_msg: str) -> str:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     prompt = (
         "너는 한국어와 필리핀 따갈로그어(Taglish 및 현지 줄임말 포함) 전문 통역 챗봇이야.\n"
         "1. 입력된 문장이 [한국어]라면:\n"
@@ -19,19 +26,21 @@ def translate_with_gemini(user_msg: str) -> str:
         "불필요한 인사말 없이 카톡에서 읽기 편하게 간결하게 답변해.\n\n"
         f"입력 문장: {user_msg}"
     )
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "thinkingConfig": {"thinkingBudget": 0}
-        }
-    }
     try:
-        res = requests.post(url, json=payload, timeout=4.5)
-        data = res.json()
-        if "candidates" in data and len(data["candidates"]) > 0:
-            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        err_msg = data.get("error", {}).get("message", str(data))
-        return f"API 확인 필요: {err_msg}"
+        models_to_try = ["gemini-3.8-flash", "gemini-3.0-flash", "gemini-2.5-flash", "gemini-flash-latest"]
+        last_err = ""
+        for model_name in models_to_try:
+            data = call_gemini(model_name, prompt)
+            if "candidates" in data and len(data["candidates"]) > 0:
+                return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            last_err = data.get("error", {}).get("message", str(data))
+            match = re.search(r"use models/([a-zA-Z0-9._-]+)", last_err)
+            if match:
+                rec_model = match.group(1)
+                retry_data = call_gemini(rec_model, prompt)
+                if "candidates" in retry_data and len(retry_data["candidates"]) > 0:
+                    return retry_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        return f"API 확인 필요: {last_err}"
     except Exception as e:
         return f"통신 지연 또는 오류: {str(e)}"
 
