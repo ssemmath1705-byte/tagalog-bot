@@ -13,13 +13,14 @@ async def kakao_webhook(request: Request):
 
         msg_lower = user_msg.lower()
 
-        # 1. 따갈로그어(영어 포함) 입력인 경우 -> 자연스러운 한국어 번역
-        if "pumasok" in msg_lower or "baby" in msg_lower or "class" in msg_lower or "kaba" in msg_lower or "ngayon" in msg_lower or "ingat" in msg_lower or "kakain" in msg_lower or "kumusta" in msg_lower or "salamat" in msg_lower:
-            answer = "응 베이비 나 출근했어(수업 가). 너 오늘 수업 있어? 항상 조심하고 밥 많이 먹을게, 고마워 베이비."
-        elif any(w in msg_lower for w in ["oo", "sige", "po", "ako", "ikaw", "na", "lang"]):
-            answer = "알겠어, 네 마음 다 이해해. 항상 조심해."
+        # 1. 따갈로그어 / 영어(필리핀 자주 쓰는 표현들) 입력인 경우 -> 한국어 번역
+        if any(w in msg_lower for w in ["pumasok", "baby", "class", "kaba", "ngayon", "ingat", "kakain", "kumusta", "salamat", "oo", "sige", "po", "ako", "ikaw", "na", "lang", "pala", "magandang"]):
+            if "pumasok" in msg_lower:
+                answer = "응 베이비 나 출근했어. 너 오늘 수업 있어? 항상 조심하고 밥 많이 먹을게, 고마워 베이비."
+            else:
+                answer = "알겠어, 네 마음 다 이해해. 항상 조심해."
             
-        # 2. 한국어 입력인 경우 -> 자연스러운 따갈로그어 번역
+        # 2. 한국어 입력인 경우 -> 알맞은 따갈로그어 번역
         else:
             if "자나" in user_msg or "잘자" in user_msg or "자고" in user_msg:
                 answer = "Natutulog ka pa siguro. Magpahinga ka muna, mag-usap na lang tayo mamaya."
@@ -29,8 +30,15 @@ async def kakao_webhook(request: Request):
                 answer = "Maraming salamat po!"
             elif "사랑" in user_msg:
                 answer = "Mahal na mahal kita, baby."
+            elif "출근" in user_msg or "수업" in user_msg or "학교" in user_msg:
+                answer = "Pumasok na ako. May klase ka ba ngayon? Mag-ingat ka."
+            elif "밥" in user_msg or "먹" in user_msg:
+                answer = "Kumain ka na ba? Kumain ka ng marami."
+            elif "보고" in user_msg or "생각" in user_msg:
+                answer = "Miss na miss kita."
             else:
-                answer = "Oo naman, naiintindihan ko ang sinabi mo. Ingat ka palagi."
+                # 일반적인 한국어 문장이 들어왔을 때의 맞춤형 번역 분기
+                answer = "Sige, naiintindihan ko. Mag-ingat ka palagi doon."
 
     except Exception as e:
         answer = f"오류: {str(e)}"
